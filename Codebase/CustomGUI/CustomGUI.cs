@@ -72,6 +72,7 @@ namespace CustomGUI
             {
                 // Read shared memory
                 sharedMemory.readAppDataInStruct();
+                sharedMemory.readStatusDevice(); 
 
                 double x_EE_sx = sharedMemory.AppDataInStruct.armLeft.EE_Pos[0];
                 double y_EE_sx = sharedMemory.AppDataInStruct.armLeft.EE_Pos[2];
@@ -79,24 +80,24 @@ namespace CustomGUI
                 double vel_z_EE_sx = sharedMemory.AppDataInStruct.armLeft.EE_Speed[2];
 
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                // int frequency = sharedMemory.Frequency();
+                int frequency = sharedMemory.Frequency();
 
                 // Write to CSV
                 using (StreamWriter sw = new StreamWriter(csvPath, true))
                 {
                     if (!headerWritten)
                     {
-                        sw.WriteLine("Time,X_EE,Y_EE,Z_EE,Vel_Z_EE");
+                        sw.WriteLine("Time,X_EE,Y_EE,Z_EE,Vel_Z_EE,Frequency");
                         headerWritten = true;
                     }
 
-                    sw.WriteLine($"{timestamp},{x_EE_sx},{y_EE_sx},{z_EE_sx},{vel_z_EE_sx}");
+                    sw.WriteLine($"{timestamp},{x_EE_sx},{y_EE_sx},{z_EE_sx},{vel_z_EE_sx},{frequency}");
                 }
 
                 // Append to TextBox output
                 // Text font size is set to 12
                 textBoxOutput.Font = new System.Drawing.Font(textBoxOutput.Font.FontFamily, 12);
-                textBoxOutput.AppendText($"Time = {timestamp},\t X = {x_EE_sx},\t Y = {y_EE_sx},\t Z = {z_EE_sx},\t VelZ = {vel_z_EE_sx},\t {Environment.NewLine}");
+                textBoxOutput.AppendText($"Time = {timestamp},\t X = {x_EE_sx},\t Y = {y_EE_sx},\t Z = {z_EE_sx},\t VelZ = {vel_z_EE_sx},\t Frequency = {frequency} {Environment.NewLine}");
             }
             catch (Exception ex)
             {
