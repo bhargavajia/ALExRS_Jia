@@ -11,7 +11,7 @@ namespace CustomGUI
         private System.Windows.Forms.Timer dataTimer;
         private TextBox textBoxOutput = null!;   // <--- Added output textbox
 
-        private string csvPath = $@"C:\Users\franc\Documents\Codebase\Data\data_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        private string csvPath = $@"C:\Users\franc\Documents\ALEX_Jia\Codebase\Data\data_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
         private bool headerWritten = false;
 
         public CustomGUI()
