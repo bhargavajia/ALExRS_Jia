@@ -19,15 +19,8 @@ namespace CustomGUI
         private bool isCollectingData = false;
         private bool headerWritten = false;
 
-        // csvPath is set to null and only assigned when logging actually starts,
-        // so the filename timestamp matches the moment the user clicks Start Log.
         private string? csvPath = null;
         private readonly string csvDirectory = @"C:\Users\franc\Documents\ALEX_Jia\Codebase\Data";
-
-        // ── Arm state tracking (for button feedback labels) ───────────────────
-        private enum ArmState { NotSet, Wearing, Rehab }
-        private ArmState stateLeft = ArmState.NotSet;
-        private ArmState stateRight = ArmState.NotSet;
 
         // ── Cached sensor values ──────────────────────────────────────────────
         private double x_left = 0, y_left = 0, z_left = 0;
@@ -56,13 +49,13 @@ namespace CustomGUI
         private Button btnStopLog;
         private DataGridView dgvData;
 
-        // ── Colours used for button active/inactive feedback ──────────────────
-        private static readonly Color ColWearActive = Color.FromArgb(100, 180, 255);  // stronger blue
+        // ── Colours for button feedback ───────────────────────────────────────
+        private static readonly Color ColWearActive = Color.FromArgb(100, 180, 255);
         private static readonly Color ColWearIdle = Color.LightBlue;
-        private static readonly Color ColRehabActive = Color.FromArgb(255, 120, 100);  // stronger red
+        private static readonly Color ColRehabActive = Color.FromArgb(255, 120, 100);
         private static readonly Color ColRehabIdle = Color.LightCoral;
-        private static readonly Color ColStopActive = Color.FromArgb(255, 200, 80);  // amber
-        private static readonly Color ColStopIdle = Color.FromArgb(255, 235, 160);  // pale amber
+        private static readonly Color ColStopActive = Color.FromArgb(255, 200, 80);
+        private static readonly Color ColStopIdle = Color.FromArgb(255, 235, 160);
 
         // ─────────────────────────────────────────────────────────────────────
         public EnhancedRobotGUI()
@@ -206,10 +199,9 @@ namespace CustomGUI
             };
             btnStopRehabLeft.Click += BtnStopRehabLeft_Click;
 
-            // State feedback label
             lblLeftArmState = new Label
             {
-                Text = "State: NOT SET",
+                Text = "Phase: —",
                 Location = new Point(12, 75),
                 Size = new Size(430, 22),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
@@ -261,7 +253,7 @@ namespace CustomGUI
 
             lblRightArmState = new Label
             {
-                Text = "State: NOT SET",
+                Text = "Phase: —",
                 Location = new Point(12, 75),
                 Size = new Size(430, 22),
                 Font = new Font("Segoe UI", 9, FontStyle.Bold),
@@ -302,7 +294,6 @@ namespace CustomGUI
             };
             btnStopLog.Click += BtnStopLog_Click;
 
-            // Shows the active CSV filename (or idle message)
             lblCsvStatus = new Label
             {
                 Text = "Not logging",
@@ -314,7 +305,6 @@ namespace CustomGUI
 
             gbLog.Controls.AddRange(new Control[] { btnStartLog, btnStopLog, lblCsvStatus });
 
-            // Add all controls to form
             this.Controls.Add(topPanel);
             this.Controls.Add(dgvData);
             this.Controls.Add(gbLeft);
@@ -354,6 +344,43 @@ namespace CustomGUI
                 Directory.CreateDirectory(csvDirectory);
         }
 
+        // ── Phase code to name mapping ────────────────────────────────────────
+        private string GetPhaseName(float phaseCode)
+        {
+            int code = (int)phaseCode;
+            return code switch
+            {
+                -100 => "STARTING_UP",
+                0 => "DRIVER_OFF",
+                1 => "DEACT_DRIVER",
+                2 => "DEACT_CONTROL",
+                5 => "ACT_DRIVER",
+                6 => "ACT_CONTROL",
+                7 => "MOTOR_RESET",
+                8 => "ENCODER_RESET",
+                10 => "WEARING",
+                15 => "PRE_REHAB",
+                20 => "REHAB",
+                100 => "FAULT",
+                _ => $"UNKNOWN ({code})"
+            };
+        }
+
+        // Returns a suitable colour for the phase
+        private Color GetPhaseColor(float phaseCode)
+        {
+            int code = (int)phaseCode;
+            return code switch
+            {
+                10 => Color.SteelBlue,      // WEARING
+                20 => Color.Firebrick,      // REHAB
+                15 => Color.DarkOrange,     // PRE_REHAB
+                100 => Color.Red,            // FAULT
+                0 => Color.Gray,           // DRIVER_OFF
+                _ => Color.DarkSlateGray
+            };
+        }
+
         // ── Timer tick ────────────────────────────────────────────────────────
         private void DataTimer_Tick(object? sender, EventArgs e)
         {
@@ -364,6 +391,12 @@ namespace CustomGUI
 
             UpdateTable();
             lblFrequency.Text = $"Frequency: {frequency} Hz";
+
+            // Update arm phase labels from shared memory
+            if (isConnectedMode && sharedMemory != null)
+                UpdateArmPhaseLabels();
+            else
+                ResetArmPhaseLabels();
 
             if (isCollectingData && isConnectedMode && sharedMemory != null)
                 LogToCsv();
@@ -376,6 +409,7 @@ namespace CustomGUI
             {
                 sharedMemory!.readAppDataInStruct();
                 sharedMemory.readStatusDevice();
+                sharedMemory.readGuiDataInStruct();  // needed for ControlPhase
 
                 x_left = sharedMemory.AppDataInStruct.armLeft.EE_Pos[0];
                 y_left = sharedMemory.AppDataInStruct.armLeft.EE_Pos[1];
@@ -457,9 +491,57 @@ namespace CustomGUI
             dgvData.Rows[10].Cells[2].Value = "—";
         }
 
+        // ── Update arm phase labels from ControlPhase ─────────────────────────
+        private void UpdateArmPhaseLabels()
+        {
+            if (sharedMemory == null) return;
+
+            float phaseLeft = sharedMemory.GuiDataInStruct.Exos.armLeft.Status.ControlPhase;
+            float phaseRight = sharedMemory.GuiDataInStruct.Exos.armRight.Status.ControlPhase;
+
+            string nameLeft = GetPhaseName(phaseLeft);
+            string nameRight = GetPhaseName(phaseRight);
+
+            lblLeftArmState.Text = $"Phase: {nameLeft}";
+            lblLeftArmState.ForeColor = GetPhaseColor(phaseLeft);
+
+            lblRightArmState.Text = $"Phase: {nameRight}";
+            lblRightArmState.ForeColor = GetPhaseColor(phaseRight);
+
+            // Update button highlights based on phase
+            UpdateButtonHighlight(phaseLeft, btnWearLeft, btnRehabLeft);
+            UpdateButtonHighlight(phaseRight, btnWearRight, btnRehabRight);
+        }
+
+        private void ResetArmPhaseLabels()
+        {
+            lblLeftArmState.Text = "Phase: —";
+            lblLeftArmState.ForeColor = Color.Gray;
+            lblRightArmState.Text = "Phase: —";
+            lblRightArmState.ForeColor = Color.Gray;
+
+            btnWearLeft.BackColor = ColWearIdle;
+            btnRehabLeft.BackColor = ColRehabIdle;
+            btnWearRight.BackColor = ColWearIdle;
+            btnRehabRight.BackColor = ColRehabIdle;
+        }
+
+        private void UpdateButtonHighlight(float phase, Button wearBtn, Button rehabBtn)
+        {
+            int code = (int)phase;
+
+            // Reset to idle
+            wearBtn.BackColor = ColWearIdle;
+            rehabBtn.BackColor = ColRehabIdle;
+
+            // Highlight based on actual phase
+            if (code == 10)  // WEARING
+                wearBtn.BackColor = ColWearActive;
+            else if (code == 20 || code == 15)  // REHAB or PRE_REHAB
+                rehabBtn.BackColor = ColRehabActive;
+        }
+
         // ── CSV logging ───────────────────────────────────────────────────────
-        // csvPath is set here so the filename timestamp is the moment logging starts,
-        // not the moment the application launched.
         private void StartNewCsvSession()
         {
             csvPath = Path.Combine(csvDirectory,
@@ -557,10 +639,7 @@ namespace CustomGUI
                     lblCsvStatus.ForeColor = Color.DimGray;
                 }
 
-                // Reset arm states visually when disconnecting
-                SetArmState(ref stateLeft, ArmState.NotSet);
-                SetArmState(ref stateRight, ArmState.NotSet);
-                UpdateArmStateUI();
+                ResetArmPhaseLabels();
             }
 
             btnWearLeft.Enabled = isConnectedMode;
@@ -572,51 +651,6 @@ namespace CustomGUI
             btnStartLog.Enabled = isConnectedMode;
         }
 
-        // ── Arm state helpers ─────────────────────────────────────────────────
-        private void SetArmState(ref ArmState field, ArmState newState)
-        {
-            field = newState;
-        }
-
-        // Refreshes button highlights and state label text for both arms.
-        private void UpdateArmStateUI()
-        {
-            RefreshArmButtons(stateLeft,
-                btnWearLeft, btnRehabLeft, btnStopRehabLeft, lblLeftArmState, "Left");
-            RefreshArmButtons(stateRight,
-                btnWearRight, btnRehabRight, btnStopRehabRight, lblRightArmState, "Right");
-        }
-
-        private void RefreshArmButtons(ArmState state,
-            Button wear, Button rehab, Button stopRehab, Label stateLabel, string side)
-        {
-            // Reset all to idle colours first
-            wear.BackColor = ColWearIdle;
-            rehab.BackColor = ColRehabIdle;
-            stopRehab.BackColor = ColStopIdle;
-
-            switch (state)
-            {
-                case ArmState.Wearing:
-                    wear.BackColor = ColWearActive;
-                    stateLabel.Text = $"State: WEARING";
-                    stateLabel.ForeColor = Color.SteelBlue;
-                    break;
-
-                case ArmState.Rehab:
-                    rehab.BackColor = ColRehabActive;
-                    stateLabel.Text = $"State: REHAB";
-                    stateLabel.ForeColor = Color.Firebrick;
-                    break;
-
-                case ArmState.NotSet:
-                default:
-                    stateLabel.Text = "State: NOT SET";
-                    stateLabel.ForeColor = Color.Gray;
-                    break;
-            }
-        }
-
         // ── Arm command buttons ───────────────────────────────────────────────
 
         private void BtnWearLeft_Click(object? sender, EventArgs e)
@@ -626,8 +660,6 @@ namespace CustomGUI
             {
                 sharedMemory.SelectedArm = 1;
                 sharedMemory.startWearing();
-                stateLeft = ArmState.Wearing;
-                UpdateArmStateUI();
             }
             catch (Exception ex)
             {
@@ -643,8 +675,6 @@ namespace CustomGUI
             {
                 sharedMemory.SelectedArm = 1;
                 sharedMemory.startRehab();
-                stateLeft = ArmState.Rehab;
-                UpdateArmStateUI();
             }
             catch (Exception ex)
             {
@@ -653,7 +683,6 @@ namespace CustomGUI
             }
         }
 
-        // Stop Rehab → sends stopRehab() then startWearing() to return to wearing state
         private void BtnStopRehabLeft_Click(object? sender, EventArgs e)
         {
             if (sharedMemory == null) return;
@@ -662,8 +691,6 @@ namespace CustomGUI
                 sharedMemory.SelectedArm = 1;
                 sharedMemory.stopRehab();
                 sharedMemory.startWearing();
-                stateLeft = ArmState.Wearing;
-                UpdateArmStateUI();
             }
             catch (Exception ex)
             {
@@ -679,8 +706,6 @@ namespace CustomGUI
             {
                 sharedMemory.SelectedArm = 3;
                 sharedMemory.startWearing();
-                stateRight = ArmState.Wearing;
-                UpdateArmStateUI();
             }
             catch (Exception ex)
             {
@@ -696,8 +721,6 @@ namespace CustomGUI
             {
                 sharedMemory.SelectedArm = 3;
                 sharedMemory.startRehab();
-                stateRight = ArmState.Rehab;
-                UpdateArmStateUI();
             }
             catch (Exception ex)
             {
@@ -706,7 +729,6 @@ namespace CustomGUI
             }
         }
 
-        // Stop Rehab → sends stopRehab() then startWearing() to return to wearing state
         private void BtnStopRehabRight_Click(object? sender, EventArgs e)
         {
             if (sharedMemory == null) return;
@@ -715,8 +737,6 @@ namespace CustomGUI
                 sharedMemory.SelectedArm = 3;
                 sharedMemory.stopRehab();
                 sharedMemory.startWearing();
-                stateRight = ArmState.Wearing;
-                UpdateArmStateUI();
             }
             catch (Exception ex)
             {
@@ -728,7 +748,7 @@ namespace CustomGUI
         // ── CSV logging buttons ───────────────────────────────────────────────
         private void BtnStartLog_Click(object? sender, EventArgs e)
         {
-            StartNewCsvSession();         // sets csvPath to NOW timestamp
+            StartNewCsvSession();
             isCollectingData = true;
             btnStartLog.Enabled = false;
             btnStopLog.Enabled = true;
