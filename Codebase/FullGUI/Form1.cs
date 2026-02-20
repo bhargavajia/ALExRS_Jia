@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Windows.Forms;
 using System.Drawing;
+using System.Threading;
 using ALExGUI_4;
 
 namespace CustomGUI
@@ -9,7 +10,8 @@ namespace CustomGUI
     /// <summary>
     /// Enhanced ALEX Robot Control GUI
     /// Features:
-    /// - 50 Hz display update rate (20ms timer interval)
+    /// - 50 Hz data logging rate (20ms precise timer)
+    /// - 30 Hz display update rate (33ms UI timer)
     /// - Multiple data tables: End Effector, Shoulder Joints, Elbow/Wrist Joints
     /// - Comprehensive CSV logging with all joint data (position in rad/deg, velocities)
     /// - Freeze/Unfreeze display toggle to pause screen updates while logging continues
@@ -41,8 +43,10 @@ namespace CustomGUI
         // ── Shared memory (null until user connects) ──────────────────────────
         private SharedMemory? sharedMemory = null;
 
-        // ── Timer ─────────────────────────────────────────────────────────────
-        private System.Windows.Forms.Timer dataTimer;
+        // ── Timers ────────────────────────────────────────────────────────────
+        private System.Windows.Forms.Timer uiTimer;           // UI updates (30 Hz)
+        private System.Threading.Timer? dataLoggingTimer;     // Data logging (50 Hz)
+        private readonly object dataLock = new object();      // Thread synchronization
 
         // ── Mode / logging state ──────────────────────────────────────────────
         private bool isConnectedMode = false;
@@ -138,10 +142,13 @@ namespace CustomGUI
             InitializeDataGrid();
             EnsureCsvDirectory();
 
-            dataTimer = new System.Windows.Forms.Timer();
-            dataTimer.Interval = 20;  // 50 Hz (20ms interval)
-            dataTimer.Tick += DataTimer_Tick;
-            dataTimer.Start();
+            // UI update timer - 30 Hz (33ms) is smooth enough for display
+            uiTimer = new System.Windows.Forms.Timer();
+            uiTimer.Interval = 33;  // ~30 Hz
+            uiTimer.Tick += UiTimer_Tick;
+            uiTimer.Start();
+
+            // Data logging timer will be started when logging begins (50 Hz precise)
 
             isConnectedMode = false;
             UpdateModeUI();
@@ -819,15 +826,20 @@ namespace CustomGUI
             };
         }
 
-        // ── Timer tick ────────────────────────────────────────────────────────
-        // Called every 20ms (50 Hz) to update GUI and log data
-        private void DataTimer_Tick(object? sender, EventArgs e)
+        // ── UI Timer tick ─────────────────────────────────────────────────────
+        // Called every 33ms (~30 Hz) to update GUI display only
+        private void UiTimer_Tick(object? sender, EventArgs e)
         {
-            if (isConnectedMode && sharedMemory != null)
-                ReadFromSharedMemory();
-            else
-                FillPreviewZeros();
+            // Read latest data (thread-safe)
+            lock (dataLock)
+            {
+                if (isConnectedMode && sharedMemory != null)
+                    ReadFromSharedMemory();
+                else
+                    FillPreviewZeros();
+            }
 
+            // Update UI
             UpdateTable();
             lblFrequency.Text = $"Frequency: {frequency} Hz";
 
@@ -835,9 +847,34 @@ namespace CustomGUI
                 UpdateArmPhaseLabels();
             else
                 ResetArmPhaseLabels();
+        }
 
-            if (isCollectingData && isConnectedMode && sharedMemory != null)
-                LogToCsv();
+        // ── Data Logging Timer callback ───────────────────────────────────────
+        // Called every 20ms (50 Hz) on separate thread for precise data logging
+        private void DataLoggingTimer_Callback(object? state)
+        {
+            if (!isCollectingData || !isConnectedMode || sharedMemory == null)
+                return;
+
+            // Read data and log (thread-safe)
+            lock (dataLock)
+            {
+                try
+                {
+                    ReadFromSharedMemory();
+                    LogToCsv();
+                }
+                catch (Exception ex)
+                {
+                    // Handle errors on UI thread
+                    this.Invoke((MethodInvoker)delegate
+                    {
+                        MessageBox.Show($"Data logging error:\n{ex.Message}",
+                            "Logging Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        StopDataLogging();
+                    });
+                }
+            }
         }
 
         // ── Read shared memory ────────────────────────────────────────────────
@@ -1065,19 +1102,15 @@ namespace CustomGUI
 
         private void StopMonolateralLogging()
         {
-            // Stop data collection
-            isCollectingData = false;
-            btnStartLog.Enabled = true;
-            btnStopLog.Enabled = false;
+            // Stop the data logging timer
+            StopDataLogging();
+
             btnNextState.Enabled = false;
 
             // Reset state
             currentState = AcquisitionState.Idle;
             lblStateValue.Text = "IDLE";
             lblStateValue.ForeColor = Color.DarkSlateGray;
-
-            lblCsvStatus.Text = $"Last saved: {Path.GetFileName(csvPath ?? "—")}";
-            lblCsvStatus.ForeColor = Color.DimGray;
         }
 
         // ── CSV logging ───────────────────────────────────────────────────────
@@ -1272,11 +1305,7 @@ namespace CustomGUI
 
                 if (isCollectingData)
                 {
-                    isCollectingData = false;
-                    btnStartLog.Enabled = true;
-                    btnStopLog.Enabled = false;
-                    lblCsvStatus.Text = "Not logging";
-                    lblCsvStatus.ForeColor = Color.DimGray;
+                    StopDataLogging();
                 }
 
                 ResetArmPhaseLabels();
@@ -1428,9 +1457,7 @@ namespace CustomGUI
         private void BtnStartLog_Click(object? sender, EventArgs e)
         {
             StartNewCsvSession();
-            isCollectingData = true;
-            btnStartLog.Enabled = false;
-            btnStopLog.Enabled = true;
+            StartDataLogging();
 
             // If in Monolateral Acquisition mode
             if (currentLoggingMode == LoggingMode.MonolateralAcquisition)
@@ -1451,11 +1478,7 @@ namespace CustomGUI
 
         private void BtnStopLog_Click(object? sender, EventArgs e)
         {
-            isCollectingData = false;
-            btnStartLog.Enabled = true;
-            btnStopLog.Enabled = false;
-            lblCsvStatus.Text = $"Last saved: {Path.GetFileName(csvPath ?? "—")}";
-            lblCsvStatus.ForeColor = Color.DimGray;
+            StopDataLogging();
 
             // If in Monolateral Acquisition mode
             if (currentLoggingMode == LoggingMode.MonolateralAcquisition)
@@ -1472,6 +1495,35 @@ namespace CustomGUI
                 rbLeftArm.Enabled = true;
                 rbRightArm.Enabled = true;
             }
+        }
+
+        // ── Start/Stop Data Logging Timer ─────────────────────────────────────
+        private void StartDataLogging()
+        {
+            isCollectingData = true;
+            btnStartLog.Enabled = false;
+            btnStopLog.Enabled = true;
+
+            // Start high-precision timer for 50 Hz data logging
+            dataLoggingTimer = new System.Threading.Timer(
+                DataLoggingTimer_Callback,
+                null,
+                0,                // Start immediately
+                20);              // 50 Hz (20ms interval)
+        }
+
+        private void StopDataLogging()
+        {
+            isCollectingData = false;
+            btnStartLog.Enabled = true;
+            btnStopLog.Enabled = false;
+            lblCsvStatus.Text = $"Last saved: {Path.GetFileName(csvPath ?? "—")}";
+            lblCsvStatus.ForeColor = Color.DimGray;
+
+            // Stop the high-precision timer
+            dataLoggingTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            dataLoggingTimer?.Dispose();
+            dataLoggingTimer = null;
         }
 
         // ── Freeze/Unfreeze Display Toggle ────────────────────────────────────
@@ -1494,7 +1546,8 @@ namespace CustomGUI
         // ── Cleanup ───────────────────────────────────────────────────────────
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            dataTimer.Stop();
+            uiTimer.Stop();
+            dataLoggingTimer?.Dispose();
             base.OnFormClosing(e);
         }
     }
