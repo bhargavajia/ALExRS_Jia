@@ -29,9 +29,10 @@ namespace CustomGUI
 
         private enum AcquisitionState
         {
-            Idle,
+            Start,
             Going,
-            Returning
+            Returning,
+            End
         }
 
         private enum ArmSelection
@@ -58,7 +59,7 @@ namespace CustomGUI
 
         // ── Logging mode and state tracking ───────────────────────────────────
         private LoggingMode currentLoggingMode = LoggingMode.RecordAllData;
-        private AcquisitionState currentState = AcquisitionState.Idle;
+        private AcquisitionState currentState = AcquisitionState.Start;
         private ArmSelection selectedArmForMonolateral = ArmSelection.Left;
 
         // ── Cached sensor values (End Effector position and velocity only) ────
@@ -635,7 +636,7 @@ namespace CustomGUI
 
             lblStateValue = new Label
             {
-                Text = "IDLE",
+                Text = "START",
                 Location = new Point(65, 125),
                 Size = new Size(150, 25),
                 Font = new Font("Segoe UI", 10, FontStyle.Bold),
@@ -1081,7 +1082,7 @@ namespace CustomGUI
         {
             switch (currentState)
             {
-                case AcquisitionState.Idle:
+                case AcquisitionState.Start:
                     currentState = AcquisitionState.Going;
                     lblStateValue.Text = "GOING";
                     lblStateValue.ForeColor = Color.DarkOrange;
@@ -1094,6 +1095,12 @@ namespace CustomGUI
                     break;
 
                 case AcquisitionState.Returning:
+                    currentState = AcquisitionState.End;
+                    lblStateValue.Text = "END";
+                    lblStateValue.ForeColor = Color.DarkRed;
+                    break;
+
+                case AcquisitionState.End:
                     // Stop logging and reset
                     StopMonolateralLogging();
                     break;
@@ -1108,8 +1115,8 @@ namespace CustomGUI
             btnNextState.Enabled = false;
 
             // Reset state
-            currentState = AcquisitionState.Idle;
-            lblStateValue.Text = "IDLE";
+            currentState = AcquisitionState.Start;
+            lblStateValue.Text = "START";
             lblStateValue.ForeColor = Color.DarkSlateGray;
         }
 
@@ -1462,9 +1469,9 @@ namespace CustomGUI
             // If in Monolateral Acquisition mode
             if (currentLoggingMode == LoggingMode.MonolateralAcquisition)
             {
-                // Reset state to idle and enable Next State button
-                currentState = AcquisitionState.Idle;
-                lblStateValue.Text = "IDLE";
+                // Reset state to start and enable Next State button
+                currentState = AcquisitionState.Start;
+                lblStateValue.Text = "START";
                 lblStateValue.ForeColor = Color.DarkSlateGray;
                 btnNextState.Enabled = true;
 
@@ -1484,8 +1491,8 @@ namespace CustomGUI
             if (currentLoggingMode == LoggingMode.MonolateralAcquisition)
             {
                 // Reset state and disable Next State button
-                currentState = AcquisitionState.Idle;
-                lblStateValue.Text = "IDLE";
+                currentState = AcquisitionState.Start;
+                lblStateValue.Text = "START";
                 lblStateValue.ForeColor = Color.DarkSlateGray;
                 btnNextState.Enabled = false;
 

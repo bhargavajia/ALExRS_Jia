@@ -27,21 +27,23 @@ The GUI now supports two distinct data collection modes:
 
 ### State Progression
 
-The system cycles through three states:
+The system cycles through four states:
 
 | State | Description | Display Color | Next Action |
 |-------|-------------|---------------|-------------|
-| **IDLE** | Initial state, ready to begin | Dark Slate Gray | Click "Next State" → GOING |
+| **START** | Initial state, ready to begin | Dark Slate Gray | Click "Next State" → GOING |
 | **GOING** | Movement phase (e.g., reaching forward) | Dark Orange | Click "Next State" → RETURNING |
-| **RETURNING** | Return phase (e.g., returning to start) | Dark Blue | Click "Next State" → Stops logging |
+| **RETURNING** | Return phase (e.g., returning to start) | Dark Blue | Click "Next State" → END |
+| **END** | Movement complete, ready to finish | Dark Red | Click "Next State" → Stops logging |
 
 ### Workflow Example
 
 ```
-1. Start CSV Logging → State: IDLE
+1. Start CSV Logging → State: START
 2. Click "Next State" → State: GOING (arm moves forward)
 3. Click "Next State" → State: RETURNING (arm returns)
-4. Click "Next State" → Logging automatically stops, resets to IDLE
+4. Click "Next State" → State: END (movement complete)
+5. Click "Next State" → Logging automatically stops, resets to START
 ```
 
 ---
@@ -88,9 +90,10 @@ State
 ```
 
 **State Column Values**: 
-- `IDLE`
+- `START`
 - `GOING`
 - `RETURNING`
+- `END`
 
 ---
 
@@ -132,9 +135,10 @@ private enum LoggingMode
 
 private enum AcquisitionState
 {
-    Idle,
+    Start,
     Going,
-    Returning
+    Returning,
+    End
 }
 
 private enum ArmSelection
@@ -147,7 +151,7 @@ private enum ArmSelection
 ### Key Features
 
 - **Mode Lock**: Mode and arm selection are disabled during active logging
-- **Automatic Stop**: Logging stops automatically after completing RETURNING state
+- **Automatic Stop**: Logging stops automatically after completing END state
 - **State Persistence**: State value is written to CSV with every data row
 - **50 Hz Logging**: Both modes maintain 50 Hz (20ms) data collection rate
 
@@ -164,9 +168,10 @@ import pandas as pd
 df = pd.read_csv('data_20240115_143022.csv')
 
 # Filter by state
-idle_data = df[df['State'] == 'IDLE']
+start_data = df[df['State'] == 'START']
 going_data = df[df['State'] == 'GOING']
 returning_data = df[df['State'] == 'RETURNING']
+end_data = df[df['State'] == 'END']
 
 # Analyze movement phase
 going_avg_velocity = going_data['Left_EE_VelX_mps'].mean()
@@ -178,9 +183,10 @@ going_avg_velocity = going_data['Left_EE_VelX_mps'].mean()
 data = readtable('data_20240115_143022.csv');
 
 % Filter by state
-idleData = data(strcmp(data.State, 'IDLE'), :);
+startData = data(strcmp(data.State, 'START'), :);
 goingData = data(strcmp(data.State, 'GOING'), :);
 returningData = data(strcmp(data.State, 'RETURNING'), :);
+endData = data(strcmp(data.State, 'END'), :);
 
 % Compare phases
 goingVel = mean(goingData.Left_EE_VelX_mps);
@@ -219,7 +225,7 @@ returnVel = mean(returningData.Left_EE_VelX_mps);
 
 - Both modes run at 50 Hz (20ms interval)
 - Mode selection can only be changed when not logging
-- Monolateral state resets to IDLE when logging starts
+- Monolateral state resets to START when logging starts
 - "Stop CSV Logging" button still available for manual stop in both modes
 - Display freeze feature works independently in both modes
 
