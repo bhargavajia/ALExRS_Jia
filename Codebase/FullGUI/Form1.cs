@@ -29,10 +29,8 @@ namespace CustomGUI
 
         private enum AcquisitionState
         {
-            Start,
             Going,
-            Returning,
-            End
+            Returning
         }
 
         private enum ArmSelection
@@ -59,7 +57,7 @@ namespace CustomGUI
 
         // ── Logging mode and state tracking ───────────────────────────────────
         private LoggingMode currentLoggingMode = LoggingMode.RecordAllData;
-        private AcquisitionState currentState = AcquisitionState.Start;
+        private AcquisitionState currentState = AcquisitionState.Going;
         private ArmSelection selectedArmForMonolateral = ArmSelection.Left;
 
         // ── Cached sensor values (End Effector position and velocity only) ────
@@ -87,6 +85,8 @@ namespace CustomGUI
         private Label lblCsvStatus;
         private Label lblLeftArmState;
         private Label lblRightArmState;
+        private Label lblLeftShoulderOffset;
+        private Label lblRightShoulderOffset;
         private Button btnToggleMode;
         private Button btnWearLeft;
         private Button btnRehabLeft;
@@ -458,8 +458,17 @@ namespace CustomGUI
                 ForeColor = Color.Gray
             };
 
+            lblLeftShoulderOffset = new Label
+            {
+                Text = "Shoulder Offset: — m",
+                Location = new Point(12, 145),
+                Size = new Size(430, 18),
+                Font = new Font("Segoe UI", 8),
+                ForeColor = Color.DarkSlateGray
+            };
+
             gbLeft.Controls.AddRange(new Control[]
-                { btnWearLeft, btnRehabLeft, btnStopRehabLeft, btnStopDeviceLeft, lblLeftArmState });
+                { btnWearLeft, btnRehabLeft, btnStopRehabLeft, btnStopDeviceLeft, lblLeftArmState, lblLeftShoulderOffset });
             ry += 205;
 
             // ── Right Arm GroupBox ────────────────────────────────────────────
@@ -521,8 +530,17 @@ namespace CustomGUI
                 ForeColor = Color.Gray
             };
 
+            lblRightShoulderOffset = new Label
+            {
+                Text = "Shoulder Offset: — m",
+                Location = new Point(12, 145),
+                Size = new Size(430, 18),
+                Font = new Font("Segoe UI", 8),
+                ForeColor = Color.DarkSlateGray
+            };
+
             gbRight.Controls.AddRange(new Control[]
-                { btnWearRight, btnRehabRight, btnStopRehabRight, btnStopDeviceRight, lblRightArmState });
+                { btnWearRight, btnRehabRight, btnStopRehabRight, btnStopDeviceRight, lblRightArmState, lblRightShoulderOffset });
             ry += 205;
 
             // ── Data Logging GroupBox ─────────────────────────────────────────
@@ -1018,6 +1036,10 @@ namespace CustomGUI
             lblRightArmState.Text = $"Phase: {nameRight}";
             lblRightArmState.ForeColor = GetPhaseColor(phaseRight);
 
+            // Update shoulder offset displays
+            lblLeftShoulderOffset.Text = $"Shoulder Offset: {sharedMemory.ShoulderOffsetLeft:F4} m";
+            lblRightShoulderOffset.Text = $"Shoulder Offset: {sharedMemory.ShoulderOffsetRight:F4} m";
+
             UpdateButtonHighlight(phaseLeft, btnWearLeft, btnRehabLeft);
             UpdateButtonHighlight(phaseRight, btnWearRight, btnRehabRight);
         }
@@ -1028,6 +1050,9 @@ namespace CustomGUI
             lblLeftArmState.ForeColor = Color.Gray;
             lblRightArmState.Text = "Phase: —";
             lblRightArmState.ForeColor = Color.Gray;
+
+            lblLeftShoulderOffset.Text = "Shoulder Offset: — m";
+            lblRightShoulderOffset.Text = "Shoulder Offset: — m";
 
             btnWearLeft.BackColor = ColWearIdle;
             btnRehabLeft.BackColor = ColRehabIdle;
@@ -1062,6 +1087,10 @@ namespace CustomGUI
                 lblStateDisplay.Visible = true;
                 lblStateValue.Visible = true;
                 btnNextState.Visible = true;
+
+                // Update label text to match actual current state
+                lblStateValue.Text = "GOING";
+                lblStateValue.ForeColor = Color.DarkOrange;
             }
             else
             {
@@ -1082,12 +1111,6 @@ namespace CustomGUI
         {
             switch (currentState)
             {
-                case AcquisitionState.Start:
-                    currentState = AcquisitionState.Going;
-                    lblStateValue.Text = "GOING";
-                    lblStateValue.ForeColor = Color.DarkOrange;
-                    break;
-
                 case AcquisitionState.Going:
                     currentState = AcquisitionState.Returning;
                     lblStateValue.Text = "RETURNING";
@@ -1095,12 +1118,6 @@ namespace CustomGUI
                     break;
 
                 case AcquisitionState.Returning:
-                    currentState = AcquisitionState.End;
-                    lblStateValue.Text = "END";
-                    lblStateValue.ForeColor = Color.DarkRed;
-                    break;
-
-                case AcquisitionState.End:
                     // Stop logging and reset
                     StopMonolateralLogging();
                     break;
@@ -1115,9 +1132,9 @@ namespace CustomGUI
             btnNextState.Enabled = false;
 
             // Reset state
-            currentState = AcquisitionState.Start;
-            lblStateValue.Text = "START";
-            lblStateValue.ForeColor = Color.DarkSlateGray;
+            currentState = AcquisitionState.Going;
+            lblStateValue.Text = "GOING";
+            lblStateValue.ForeColor = Color.DarkOrange;
         }
 
         // ── CSV logging ───────────────────────────────────────────────────────
@@ -1469,10 +1486,10 @@ namespace CustomGUI
             // If in Monolateral Acquisition mode
             if (currentLoggingMode == LoggingMode.MonolateralAcquisition)
             {
-                // Reset state to start and enable Next State button
-                currentState = AcquisitionState.Start;
-                lblStateValue.Text = "START";
-                lblStateValue.ForeColor = Color.DarkSlateGray;
+                // Reset state to Going and enable Next State button
+                currentState = AcquisitionState.Going;
+                lblStateValue.Text = "GOING";
+                lblStateValue.ForeColor = Color.DarkOrange;
                 btnNextState.Enabled = true;
 
                 // Disable mode selection during logging
@@ -1491,9 +1508,9 @@ namespace CustomGUI
             if (currentLoggingMode == LoggingMode.MonolateralAcquisition)
             {
                 // Reset state and disable Next State button
-                currentState = AcquisitionState.Start;
-                lblStateValue.Text = "START";
-                lblStateValue.ForeColor = Color.DarkSlateGray;
+                currentState = AcquisitionState.Going;
+                lblStateValue.Text = "GOING";
+                lblStateValue.ForeColor = Color.DarkOrange;
                 btnNextState.Enabled = false;
 
                 // Re-enable mode selection

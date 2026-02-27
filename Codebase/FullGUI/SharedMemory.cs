@@ -756,6 +756,8 @@ namespace ALExGUI_4
             GuiDataInStruct = (ALEX30_GUI_DataIn)Marshal.PtrToStructure(handleCommand.AddrOfPinnedObject(), typeof(ALEX30_GUI_DataIn));
             ArmLeftCompValue = GuiDataInStruct.Exos.armLeft.Param_curr.Human_Arm_Gravity;
             ArmRightCompValue = GuiDataInStruct.Exos.armRight.Param_curr.Human_Arm_Gravity;
+            ShoulderOffsetLeft = GuiDataInStruct.Exos.armLeft.Param_curr.X_Shulder_Offset;
+            ShoulderOffsetRight = GuiDataInStruct.Exos.armRight.Param_curr.X_Shulder_Offset;
             for (int i = 0; i < 4; i++)
             {
                 JointPosMinL[i] = GuiDataInStruct.Exos.armLeft.Param_curr.Joint_MinPos[i] * radToDeg;
@@ -1703,6 +1705,10 @@ namespace ALExGUI_4
         public int SelectedArm { get; set; }
 
         public float Mirror { get; set; }
+
+        public float ShoulderOffsetLeft { get; set; }
+
+        public float ShoulderOffsetRight { get; set; }
 
     }
 }
