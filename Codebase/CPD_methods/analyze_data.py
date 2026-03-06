@@ -203,12 +203,12 @@ def analyze_precision_vs_tolerance(
                 f"{y:.3f}",
                 ha='center',
                 va='bottom',
-                fontsize=9
+                fontsize=12
             )
 
-    plt.xlabel('Window in ms around CP')
-    plt.ylabel('Precision (hit rate for 1 CP)')
-    plt.title('Precision vs Detection Tolerance')
+    plt.xlabel('Window in ms around CP', fontsize=12)
+    plt.ylabel('Precision (hit rate for 1 CP)', fontsize=12)
+    plt.title('Precision vs Detection Tolerance', fontsize=14)
     plt.ylim(0.0, 1.0)
     plt.grid(alpha=0.3, axis='y')
     plt.tight_layout()
