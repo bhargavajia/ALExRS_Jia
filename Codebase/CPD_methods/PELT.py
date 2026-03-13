@@ -63,11 +63,11 @@ def preprocess_data(df):
     Returns:
         np.ndarray: Preprocessed data (n_samples x 4).
     """
-    # Select EE Y,Z positions and velocities
+    # Select suitable coumns for CPD
     cols = ['Left_EE_PosY_m', 'Left_EE_PosZ_m', 'Left_EE_VelY_mps', 'Left_EE_VelZ_mps']
     df_processed = df[cols].copy()
     
-    # Cast to float
+    # Cast to float forcibly
     for col in df_processed.columns:
         df_processed[col] = pd.to_numeric(df_processed[col], errors='coerce')
     
@@ -80,7 +80,7 @@ def preprocess_data(df):
 def calculate_reference_length(dir_path):
     """
     Calculate the average length of all CSV files to establish a reference length
-    for time-agnostic penalty calculation.
+    for penalty calculation.
     Args:
         dir_path (str): Path to the directory containing CSV files.
     Returns:
@@ -101,7 +101,7 @@ def pelt_change_point_detection(data, n_ref, min_distance=100, penalty_multiplie
     Args:
         data (np.ndarray): Preprocessed time series data (n_samples x d_features).
         n_ref (int): Reference length for penalty scaling.
-        min_distance (int): Minimum distance between change points. Default is 100.
+        min_distance (int): Minimum distance between predicted change points.
         penalty_multiplier (float): Penalty strength multiplier. Default is 0.5.
         cost_model (str): Cost function model ('l1', 'l2', or 'rbf'). Default is 'rbf'.
     
@@ -112,9 +112,10 @@ def pelt_change_point_detection(data, n_ref, min_distance=100, penalty_multiplie
     penalty = penalty_multiplier * n_ref * d_features
     
     algo = rpt.Pelt(model=cost_model, min_size=min_distance, jump=1).fit(data)
-    change_points = algo.predict(pen=penalty)
+    change_points = algo.predict(pen=penalty)  # Predicting change points 
     
-    # Remove the last index (always n by ruptures convention)
+    # Remove the last index 
+    # (Ruptures returns the end indices of each segment including the last index which must be removed as it is not a CP)
     change_points = [cp for cp in change_points if cp != n_samples]
     
     return change_points
@@ -139,30 +140,7 @@ def detect_change_points_single_file(file_path, n_ref, penalty_multiplier=0.5):
     return change_points, data_processed, state_labels
 
 
-def detect_change_points_batch(dir_path):
-    """
-    Detect change points across all CSV files in a directory.
-    
-    Args:
-        dir_path (str): Path to the directory containing CSV files.
-    
-    Returns:
-        dict: Dictionary with filenames as keys and detected change points as values.
-    """
-    n_ref = calculate_reference_length(dir_path)
-    all_files = [f for f in os.listdir(dir_path) if f.endswith('.csv')]
-    results = {}
-    
-    for file in sorted(all_files):
-        file_path = os.path.join(dir_path, file)
-        change_points, data, states = detect_change_points_single_file(file_path, n_ref)
-        results[file] = {
-            'change_points': change_points,
-            'data_shape': data.shape,
-            'true_states': states
-        }
-    
-    return results
+
 
 
 def get_true_change_points(state_labels):
@@ -181,7 +159,7 @@ def get_true_change_points(state_labels):
     true_points = []
     for i in range(1, len(state_labels)):
         if state_labels[i] != state_labels[i-1]:
-            true_points.append(i)
+            true_points.append(i)  # Appends the first index of the new state as a CP
     
     return true_points
 
@@ -246,6 +224,7 @@ def segmentation_overlap_metrics(predicted_points, true_state_labels, target_sta
     pred_labels = _labels_from_change_points(n, predicted_points, ordered_states)
 
     per_state = {}
+    # Computing IoU for each target state
     for st in target_states:
         true_mask = (true_labels == st)
         pred_mask = (pred_labels == st)
@@ -431,13 +410,12 @@ def plot_change_points(file_path, n_ref, penalty_multiplier=0.06):
         penalty_multiplier (float): Penalty strength multiplier. Default is 0.5.
     """
     df = load_file(file_path)
-    state_labels = df['State'].values if 'State' in df.columns else None
+    state_labels = df['State'].values if 'State' in df.columns else None  # Labels 
     
-    data_processed = preprocess_data(df)
+    data_processed = preprocess_data(df)  # return only chosen columns and drop NaNs
     predicted_points = pelt_change_point_detection(data_processed, n_ref, penalty_multiplier=penalty_multiplier)
-    true_points = get_true_change_points(state_labels)
-    
-    metrics = evaluate_cpd(predicted_points, true_points)
+    true_points = get_true_change_points(state_labels) # Extract indices where state labels change
+    metrics = evaluate_cpd(predicted_points, true_points) # Evaluating detection based performance metrics 
     
     # Extract the 3 columns for plotting
     plot_cols = ['Left_EE_PosZ_m', 'Left_EE_PosY_m', 'Left_J5_ElbowFlexion_rad']
@@ -517,7 +495,7 @@ def plot_best_worst_overlap(results, dir_path, n_ref, penalty_multiplier=0.06):
     Plot the best and worst overlap samples from those with correct CP count.
     
     Args:
-        results (dict): Results from detect_change_points_batch.
+        results (dict): Results dictionary from detect_change_points_batch.
         dir_path (str): Path to data directory.
         n_ref (int): Reference length.
         penalty_multiplier (float): Penalty strength multiplier.
