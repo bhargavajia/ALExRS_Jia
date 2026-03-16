@@ -8,13 +8,16 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
+import sys
+import pathlib
 
-from CNN_CPD import (
-    split_and_load_data,
-    collate_cpd_batch,
-    CPDNet,
-    evaluate_iou_overlap,
-)
+if __package__ is None:
+    parent = str(pathlib.Path(__file__).resolve().parent.parent)
+    if parent not in sys.path:
+        sys.path.insert(0, parent)
+
+from CNN_CPD.helpers import split_and_load_data, collate_cpd_batch, CPDNet
+from CNN_CPD.evaluation import evaluate_iou_overlap
 from torch.utils.data import DataLoader
 
 
@@ -230,8 +233,8 @@ if __name__ == "__main__":
     TEST_DIR = '../Data/CPD_test'
     WEIGHT_PATH = './saved_weights/cpd_best_model.pt'
 
-    RUN_LENGTH_ANALYSIS = False
-    RUN_TOLERANCE_SWEEP = True
+    RUN_LENGTH_ANALYSIS = True
+    RUN_TOLERANCE_SWEEP = False
     
     if os.path.exists(DATA_DIR):
         if RUN_LENGTH_ANALYSIS:
