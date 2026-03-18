@@ -228,13 +228,13 @@ def analyze_precision_vs_tolerance(
 
 
 if __name__ == "__main__":
-    DATA_DIR = '../Data/Trial_data_27Feb'
-    TRAIN_DIR = '../Data/CPD_train'
-    TEST_DIR = '../Data/CPD_test'
-    WEIGHT_PATH = './saved_weights/cpd_best_model.pt'
+    DATA_DIR = '../../Data/Trial_data_27Feb'
+    TRAIN_DIR = '../../Data/CPD_train'
+    TEST_DIR = '../../Data/CPD_test'
+    WEIGHT_PATH = './saved_weights/cpd_final_model_50.pt'
 
-    RUN_LENGTH_ANALYSIS = True
-    RUN_TOLERANCE_SWEEP = False
+    RUN_LENGTH_ANALYSIS = False
+    RUN_TOLERANCE_SWEEP = True
     
     if os.path.exists(DATA_DIR):
         if RUN_LENGTH_ANALYSIS:
@@ -262,6 +262,7 @@ if __name__ == "__main__":
         alt_paths = [
             './Data/Trial_data_27Feb',
             '../../Data/Trial_data_27Feb',
+            '../Data/Trial_data_27Feb',
         ]
         for path in alt_paths:
             if os.path.exists(path):
